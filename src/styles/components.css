@@ -625,7 +625,8 @@
 }
 
 .form-input.with-icon,
-.form-select.with-icon {
+.form-select.with-icon,
+.form-textarea.with-icon {
   padding-left: calc(var(--spacing-md) + 24px + var(--spacing-sm));
 }
 

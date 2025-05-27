@@ -140,7 +140,9 @@ const FormWizard = () => {
                   <div className="step-number">{index + 1}</div>
                   <div className="step-title">{step.title}</div>
                 </div>
-                {index < steps.length - 1 && <div className="step-connector" />}
+                {index < steps.length - 1 && (
+                  <div className={`step-connector ${index < currentStep ? 'completed' : ''}`} />
+                )}
               </React.Fragment>
             ))}
           </div>
