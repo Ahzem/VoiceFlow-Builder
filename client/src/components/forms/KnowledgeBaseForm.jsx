@@ -56,6 +56,14 @@ const KnowledgeBaseForm = ({ formData, errors, updateField, toggleInArray }) => 
     </svg>
   );
 
+  const HelpCircleIcon = ({ size = 20 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  );
+
   const CheckIcon = ({ size = 16 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
       <polyline points="20,6 9,17 4,12"/>
@@ -73,6 +81,38 @@ const KnowledgeBaseForm = ({ formData, errors, updateField, toggleInArray }) => 
           <p className="form-section-subtitle">
             Upload your business documents and configure privacy settings to ensure your assistant provides accurate and secure information
           </p>
+        </div>
+      </div>
+
+      {/* FAQ Section */}
+      <div className="form-subsection">
+        <h3 className="subsection-title">
+          <HelpCircleIcon size={18} />
+          Frequently Asked Questions (FAQs)
+        </h3>
+        <p style={{ color: 'var(--text-medium-gray)', marginBottom: 'var(--spacing-lg)', fontSize: 'var(--font-size-sm)' }}>
+          What are the most common questions your customers ask? Providing FAQs helps your assistant give accurate, consistent answers.
+        </p>
+        
+        <div className="form-row single">
+          <Textarea
+            label="Common Customer Questions & Answers"
+            value={formData.frequentQuestions}
+            onChange={(e) => updateField('frequentQuestions', e.target.value)}
+            placeholder={`Please format as Question & Answer pairs, for example:
+
+Q: What are your business hours?
+A: We're open Monday through Friday from 9 AM to 6 PM EST, and Saturday from 10 AM to 4 PM EST. We're closed on Sundays.
+
+Q: Do you offer free consultations?
+A: Yes, we offer free 30-minute consultations for new clients. You can schedule one by calling us or booking online.
+
+Q: What payment methods do you accept?
+A: We accept all major credit cards, PayPal, bank transfers, and cash payments.`}
+            rows={8}
+            help="Include your most common customer questions with clear, accurate answers"
+            error={errors.frequentQuestions}
+          />
         </div>
       </div>
 
@@ -192,6 +232,9 @@ const KnowledgeBaseForm = ({ formData, errors, updateField, toggleInArray }) => 
           </li>
           <li>
             <strong>Audit Trail:</strong> All interactions are logged for security monitoring and compliance purposes
+          </li>
+          <li>
+            <strong>FAQ Training:</strong> Your FAQs are used to train the assistant for consistent, accurate responses
           </li>
         </ul>
       </div>

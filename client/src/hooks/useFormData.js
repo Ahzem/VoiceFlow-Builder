@@ -9,13 +9,32 @@ export const useFormData = () => {
   const [formData, setFormData] = useState({
     // Company Details
     companyName: '',
+    companyWebsite: '',
     phoneNumber: '',
+    contactEmail: '',
     industry: '',
     description: '',
     services: '',
     targetAudience: '',
     companySize: '',
     location: '',
+    businessHours: '',
+    businessTimezone: '',
+    
+    // Company Policies
+    refundPolicy: '',
+    serviceGuarantees: '',
+    companyPolicies: '',
+    
+    // Social Media Links
+    facebookUrl: '',
+    linkedinUrl: '',
+    twitterUrl: '',
+    instagramUrl: '',
+    otherSocialMedia: '',
+    
+    // Additional Information
+    additionalInfo: '',
     
     // Assistant Configuration
     assistantName: '',
@@ -30,8 +49,9 @@ export const useFormData = () => {
     breakTimes: [],
     holidays: [],
     
-    // Knowledge Base
+    // Knowledge Base & FAQs
     knowledgeFiles: [],
+    frequentQuestions: '',
     
     // Restricted Topics
     commonRestrictions: [],
@@ -171,14 +191,36 @@ export const useFormData = () => {
   // Reset form
   const resetForm = useCallback(() => {
     setFormData({
+      // Company Details
       companyName: '',
+      companyWebsite: '',
       phoneNumber: '',
+      contactEmail: '',
       industry: '',
       description: '',
       services: '',
       targetAudience: '',
       companySize: '',
       location: '',
+      businessHours: '',
+      businessTimezone: '',
+      
+      // Company Policies
+      refundPolicy: '',
+      serviceGuarantees: '',
+      companyPolicies: '',
+      
+      // Social Media Links
+      facebookUrl: '',
+      linkedinUrl: '',
+      twitterUrl: '',
+      instagramUrl: '',
+      otherSocialMedia: '',
+      
+      // Additional Information
+      additionalInfo: '',
+      
+      // Assistant Configuration
       assistantName: '',
       personality: '',
       language: '',
@@ -190,10 +232,17 @@ export const useFormData = () => {
       workingDays: [],
       breakTimes: [],
       holidays: [],
+      
+      // Knowledge Base & FAQs
       knowledgeFiles: [],
+      frequentQuestions: '',
+      
+      // Restricted Topics
       commonRestrictions: [],
       customRestrictions: '',
       confidentialityLevel: 'medium',
+      
+      // Integration Settings
       webhookUrl: '',
       appointmentDuration: 30,
       bufferTime: 15,

@@ -25,6 +25,7 @@ const FormWizard = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [uploadProgress, setUploadProgress] = useState({ stage: '', message: '', progress: 0 });
 
   const steps = [
     { title: 'Company Details', component: CompanyDetailsForm },
@@ -49,9 +50,14 @@ const FormWizard = () => {
     }
   };
 
+  const handleProgressUpdate = (progressData) => {
+    setUploadProgress(progressData);
+  };
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setSubmitError('');
+    setUploadProgress({ stage: 'starting', message: 'Preparing submission...', progress: 0 });
 
     try {
       // Get files for submission
@@ -61,11 +67,12 @@ const FormWizard = () => {
       console.log('Form data:', formData);
       console.log('Files:', files);
       
-      // Submit form data to webhook
-      const result = await submitFormData(formData, files);
+      // Submit form data to webhook with progress tracking
+      const result = await submitFormData(formData, files, handleProgressUpdate);
       
       if (result.success) {
-        console.log('Form submitted successfully, redirecting to Google OAuth...');
+        console.log('Form submitted successfully, preparing Google OAuth...');
+        setUploadProgress({ stage: 'oauth', message: 'Redirecting to Google Calendar setup...', progress: 100 });
         
         // Store submission data for reference including form data for the call app
         const submissionData = {
@@ -87,7 +94,7 @@ const FormWizard = () => {
         setTimeout(() => {
           // Initiate Google OAuth flow
           initiateGoogleAuth();
-        }, 500);
+        }, 1000);
       } else {
         console.error('Form submission failed:', result.error);
         setSubmitError(result.error);
@@ -154,7 +161,33 @@ const FormWizard = () => {
                 <div className="submission-content">
                   <div className="spinner-large"></div>
                   <h3>Creating Your Voice Assistant</h3>
-                  <p>Please wait while we process your information and prepare the Google Calendar integration...</p>
+                  <p>{uploadProgress.message || 'Processing your information...'}</p>
+                  
+                  {/* Progress Bar */}
+                  <div className="upload-progress-container">
+                    <div className="upload-progress-bar">
+                      <div 
+                        className="upload-progress-fill" 
+                        style={{ width: `${uploadProgress.progress || 0}%` }}
+                      />
+                    </div>
+                    <div className="upload-progress-text">
+                      {uploadProgress.progress || 0}% Complete
+                    </div>
+                  </div>
+                  
+                  {/* Stage indicators */}
+                  <div className="upload-stages">
+                    <div className={`stage-item ${uploadProgress.stage === 'processing' ? 'active' : uploadProgress.progress > 50 ? 'completed' : ''}`}>
+                      📄 Processing Files
+                    </div>
+                    <div className={`stage-item ${uploadProgress.stage === 'uploading' ? 'active' : uploadProgress.progress === 100 && uploadProgress.stage !== 'oauth' ? 'completed' : ''}`}>
+                      ⬆️ Uploading Data
+                    </div>
+                    <div className={`stage-item ${uploadProgress.stage === 'oauth' ? 'active' : ''}`}>
+                      🔗 Setting up Calendar
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

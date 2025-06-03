@@ -1,52 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/common/Button.jsx';
+import { fetchVapiAssistants } from '../utils/api.js';
 
 const Landing = () => {
   const navigate = useNavigate();
   const [assistants, setAssistants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
-  // Mock data for demonstration - in real app, this would come from API/localStorage
+  // Fetch assistants from VAPI API
   useEffect(() => {
-    // Simulate loading assistants from storage or API
-    const savedAssistants = JSON.parse(localStorage.getItem('voiceflow_assistants') || '[]');
-    
-    // Add some demo assistants if none exist
-    if (savedAssistants.length === 0) {
-      const demoAssistants = [
-        {
-          id: 'demo-1',
-          name: 'Customer Support Assistant',
-          companyName: 'TechCorp Solutions',
-          personality: 'professional',
-          language: 'en-US',
-          industry: 'Technology',
-          status: 'active',
-          createdAt: '2024-01-15',
-          callsToday: 23,
-          totalCalls: 156
-        },
-        {
-          id: 'demo-2',
-          name: 'Sales Assistant',
-          companyName: 'Digital Marketing Pro',
-          personality: 'friendly',
-          language: 'en-US',
-          industry: 'Marketing',
-          status: 'active',
-          createdAt: '2024-01-10',
-          callsToday: 8,
-          totalCalls: 89
+    const loadAssistants = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        console.log('Loading assistants from VAPI...');
+        const result = await fetchVapiAssistants();
+        
+        if (result.success) {
+          setAssistants(result.assistants);
+          console.log(`Loaded ${result.assistants.length} assistants from VAPI`);
+          
+          // Also save to localStorage as backup
+          localStorage.setItem('vapi_assistants_cache', JSON.stringify({
+            assistants: result.assistants,
+            lastFetch: new Date().toISOString()
+          }));
+        } else {
+          console.warn('Failed to fetch from VAPI:', result.error);
+          setError(result.error);
+          
+          // Try to load from cache if available
+          const cached = localStorage.getItem('vapi_assistants_cache');
+          if (cached) {
+            try {
+              const { assistants: cachedAssistants } = JSON.parse(cached);
+              setAssistants(cachedAssistants);
+              console.log('Loaded assistants from cache');
+            } catch (cacheError) {
+              console.error('Cache parsing error:', cacheError);
+            }
+          }
         }
-      ];
-      setAssistants(demoAssistants);
-    } else {
-      setAssistants(savedAssistants);
-    }
-    
-    setLoading(false);
-  }, []);
+      } catch (err) {
+        console.error('Unexpected error loading assistants:', err);
+        setError('Unexpected error occurred while loading assistants');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAssistants();
+  }, [retryCount]);
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
 
   const handleGetStarted = () => {
     navigate('/wizard');
@@ -67,6 +79,12 @@ const Landing = () => {
     // Store assistant data for editing
     localStorage.setItem('editing_assistant', JSON.stringify(assistant));
     navigate('/wizard');
+  };
+
+  const handleViewDetails = (assistant) => {
+    // Show detailed view of the assistant
+    console.log('Assistant details:', assistant);
+    // You could open a modal or navigate to a details page
   };
 
   // SVG Icons
@@ -98,8 +116,32 @@ const Landing = () => {
     </svg>
   );
 
+  const EyeIcon = ({ size = 20 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  );
+
+  const RefreshIcon = ({ size = 20 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="23,4 23,10 17,10"/>
+      <polyline points="1,20 1,14 7,14"/>
+      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+    </svg>
+  );
+
   const StatusIcon = ({ status, size = 12 }) => (
     <div className={`status-dot ${status}`} style={{ width: size, height: size }}></div>
+  );
+
+  const VapiIcon = ({ size = 20 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="23"/>
+      <line x1="8" y1="23" x2="16" y2="23"/>
+    </svg>
   );
 
   return (
@@ -120,10 +162,18 @@ const Landing = () => {
               <span className="logo-text">VoiceFlow Builder</span>
             </div>
             <nav className="header-nav">
-              <Button variant="secondary" size="sm" onClick={handleGetStarted}>
-                <PlusIcon size={16} />
-                Create Assistant
-              </Button>
+              <div className="header-actions">
+                {assistants.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleRetry}>
+                    <RefreshIcon size={16} />
+                    Refresh
+                  </Button>
+                )}
+                <Button variant="secondary" size="sm" onClick={handleGetStarted}>
+                  <PlusIcon size={16} />
+                  Create Assistant
+                </Button>
+              </div>
             </nav>
           </div>
         </div>
@@ -177,109 +227,135 @@ const Landing = () => {
           </div>
         </section>
 
-        {/* Assistants Dashboard */}
-        {assistants.length > 0 && (
-          <section className="assistants-section">
-            <div className="section-header">
-              <div className="header-content">
-                <h2>Your Voice Assistants</h2>
-                <p>Manage and test your created assistants</p>
+        {/* VAPI Assistants Dashboard */}
+        <section className="assistants-section">
+          <div className="section-header">
+            <div className="header-content">
+              <h2>
+                <VapiIcon size={24} />
+                Your VAPI Assistants
+              </h2>
+              <p>Manage and test your voice assistants from the VAPI dashboard</p>
+              {error && (
+                <div className="error-message">
+                  <span>⚠️ {error}</span>
+                  <Button variant="ghost" size="xs" onClick={handleRetry}>
+                    Try Again
+                  </Button>
+                </div>
+              )}
+            </div>
+            <Button variant="primary" onClick={handleGetStarted}>
+              <PlusIcon size={18} />
+              Create New Assistant
+            </Button>
+          </div>
+
+          {loading ? (
+            <div className="loading-grid">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="assistant-card skeleton">
+                  <div className="skeleton-header"></div>
+                  <div className="skeleton-content"></div>
+                  <div className="skeleton-footer"></div>
+                </div>
+              ))}
+            </div>
+          ) : assistants.length > 0 ? (
+            <div className="assistants-grid">
+              {assistants.map((assistant) => (
+                <div key={assistant.id} className="assistant-card">
+                  <div className="card-header">
+                    <div className="assistant-info">
+                      <h3 className="assistant-name">{assistant.name}</h3>
+                      <p className="company-name">{assistant.companyName}</p>
+                      <div className="vapi-badge">
+                        <VapiIcon size={12} />
+                        <span>VAPI</span>
+                      </div>
+                    </div>
+                    <div className="assistant-status">
+                      <StatusIcon status={assistant.status} />
+                      <span className="status-text">{assistant.status}</span>
+                    </div>
+                  </div>
+
+                  <div className="card-content">
+                    <div className="assistant-details">
+                      <div className="detail-row">
+                        <span className="detail-label">Industry:</span>
+                        <span className="detail-value">{assistant.industry}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Language:</span>
+                        <span className="detail-value">{assistant.language}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Voice:</span>
+                        <span className="detail-value">{assistant.voice?.provider} - {assistant.voice?.voiceId}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Model:</span>
+                        <span className="detail-value">{assistant.model?.provider}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span className="detail-label">Created:</span>
+                        <span className="detail-value">{assistant.createdAt}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card-actions">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => handleViewDetails(assistant)}
+                      className="details-btn"
+                    >
+                      <EyeIcon size={16} />
+                      Details
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      size="sm"
+                      onClick={() => handleEditAssistant(assistant)}
+                      className="edit-btn"
+                    >
+                      <EditIcon size={16} />
+                      Edit
+                    </Button>
+                    <Button 
+                      variant="success" 
+                      size="sm"
+                      onClick={() => handleCallAssistant(assistant)}
+                      className="call-btn"
+                    >
+                      <PhoneIcon size={16} />
+                      Test Call
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <VapiIcon size={48} />
               </div>
+              <h3>No Assistants Found</h3>
+              <p>
+                {error 
+                  ? 'There was an issue connecting to VAPI. Please check your API key configuration.'
+                  : 'You haven\'t created any voice assistants yet. Start building your first one!'
+                }
+              </p>
               <Button variant="primary" onClick={handleGetStarted}>
                 <PlusIcon size={18} />
-                Create New Assistant
+                Create Your First Assistant
               </Button>
             </div>
-
-            {loading ? (
-              <div className="loading-grid">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="assistant-card skeleton">
-                    <div className="skeleton-header"></div>
-                    <div className="skeleton-content"></div>
-                    <div className="skeleton-footer"></div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="assistants-grid">
-                {assistants.map((assistant) => (
-                  <div key={assistant.id} className="assistant-card">
-                    <div className="card-header">
-                      <div className="assistant-info">
-                        <h3 className="assistant-name">{assistant.name}</h3>
-                        <p className="company-name">{assistant.companyName}</p>
-                      </div>
-                      <div className="assistant-status">
-                        <StatusIcon status={assistant.status} />
-                        <span className="status-text">{assistant.status}</span>
-                      </div>
-                    </div>
-
-                    <div className="card-content">
-                      <div className="assistant-details">
-                        <div className="detail-row">
-                          <span className="detail-label">Industry:</span>
-                          <span className="detail-value">{assistant.industry}</span>
-                        </div>
-                        <div className="detail-row">
-                          <span className="detail-label">Language:</span>
-                          <span className="detail-value">{assistant.language}</span>
-                        </div>
-                        <div className="detail-row">
-                          <span className="detail-label">Personality:</span>
-                          <span className="detail-value">{assistant.personality}</span>
-                        </div>
-                      </div>
-
-                      <div className="assistant-stats">
-                        <div className="stat-card">
-                          <div className="stat-icon">
-                            <BarChartIcon size={16} />
-                          </div>
-                          <div className="stat-info">
-                            <div className="stat-number">{assistant.callsToday}</div>
-                            <div className="stat-label">Today</div>
-                          </div>
-                        </div>
-                        <div className="stat-card">
-                          <div className="stat-icon">
-                            <PhoneIcon size={16} />
-                          </div>
-                          <div className="stat-info">
-                            <div className="stat-number">{assistant.totalCalls}</div>
-                            <div className="stat-label">Total</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="card-actions">
-                      <Button 
-                        variant="secondary" 
-                        size="sm"
-                        onClick={() => handleEditAssistant(assistant)}
-                        className="edit-btn"
-                      >
-                        <EditIcon size={16} />
-                        Edit
-                      </Button>
-                      <Button 
-                        variant="success" 
-                        size="sm"
-                        onClick={() => handleCallAssistant(assistant)}
-                        className="call-btn"
-                      >
-                        <PhoneIcon size={16} />
-                        Test Call
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
+          )}
+        </section>
 
         {/* Features Section */}
         <section className="features-section">

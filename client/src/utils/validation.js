@@ -51,10 +51,20 @@ export const validateCompanyDetails = (data) => {
     errors.companyName = 'Company name is required';
   }
   
+  // Validate company website (optional)
+  if (data.companyWebsite?.trim() && !validateURL(data.companyWebsite)) {
+    errors.companyWebsite = 'Please enter a valid website URL (e.g., https://www.yourcompany.com)';
+  }
+  
   if (!data.phoneNumber?.trim()) {
     errors.phoneNumber = 'Phone number is required';
   } else if (!validatePhone(data.phoneNumber)) {
     errors.phoneNumber = 'Please enter a valid phone number (e.g., +1 555-123-4567)';
+  }
+  
+  // Validate contact email (optional)
+  if (data.contactEmail?.trim() && !validateEmail(data.contactEmail)) {
+    errors.contactEmail = 'Please enter a valid email address';
   }
   
   if (!data.industry) {
@@ -81,6 +91,23 @@ export const validateCompanyDetails = (data) => {
   
   if (!data.location?.trim()) {
     errors.location = 'Location is required';
+  }
+  
+  // Validate social media URLs (optional)
+  if (data.facebookUrl?.trim() && !validateURL(data.facebookUrl)) {
+    errors.facebookUrl = 'Please enter a valid Facebook URL';
+  }
+  
+  if (data.linkedinUrl?.trim() && !validateURL(data.linkedinUrl)) {
+    errors.linkedinUrl = 'Please enter a valid LinkedIn URL';
+  }
+  
+  if (data.twitterUrl?.trim() && !validateURL(data.twitterUrl)) {
+    errors.twitterUrl = 'Please enter a valid Twitter/X URL';
+  }
+  
+  if (data.instagramUrl?.trim() && !validateURL(data.instagramUrl)) {
+    errors.instagramUrl = 'Please enter a valid Instagram URL';
   }
   
   return {

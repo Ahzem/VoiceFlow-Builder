@@ -2,7 +2,10 @@
 export const WEBHOOK_URL = 'https://builderbid.app.n8n.cloud/webhook/vapi-create-assistant';
 
 // VAPI Configuration
-export const VAPI_API_KEY = import.meta.env.VITE_VAPI_API_KEY || 'your-vapi-api-key';
+// Use the private API key for server-side operations (listing assistants, etc.)
+// Public key is used for client-side voice calls
+export const VAPI_API_KEY = import.meta.env.VITE_VAPI_PRIVATE_KEY || import.meta.env.VITE_VAPI_API_KEY || '352c1d8e-4ccb-4549-b8d1-3c8ebf39f3cb';
+export const VAPI_PUBLIC_KEY = import.meta.env.VITE_VAPI_PUBLIC_KEY || '2588f020-c27b-4f60-8425-c47f4954174b';
 
 // Form Configuration
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
