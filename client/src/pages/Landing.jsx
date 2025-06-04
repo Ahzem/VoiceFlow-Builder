@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/common/Button.jsx';
 import { fetchVapiAssistants } from '../utils/api.js';
+import { VAPI_PUBLIC_KEY } from '../utils/constants.js';
 
 const Landing = () => {
   const navigate = useNavigate();
@@ -21,12 +22,23 @@ const Landing = () => {
         const result = await fetchVapiAssistants();
         
         if (result.success) {
-          setAssistants(result.assistants);
-          console.log(`Loaded ${result.assistants.length} assistants from VAPI`);
+          // Process and enhance assistant data
+          const enhancedAssistants = result.assistants.map(assistant => ({
+            ...assistant,
+            // Fix company name by extracting from different possible sources
+            companyName: extractCompanyName(assistant),
+            // Add call readiness status
+            callReady: checkCallReadiness(assistant),
+            // Format display data
+            displayInfo: formatAssistantInfo(assistant)
+          }));
+          
+          setAssistants(enhancedAssistants);
+          console.log(`Loaded ${enhancedAssistants.length} assistants from VAPI`);
           
           // Also save to localStorage as backup
           localStorage.setItem('vapi_assistants_cache', JSON.stringify({
-            assistants: result.assistants,
+            assistants: enhancedAssistants,
             lastFetch: new Date().toISOString()
           }));
         } else {
@@ -56,6 +68,65 @@ const Landing = () => {
     loadAssistants();
   }, [retryCount]);
 
+  // Helper function to extract company name from various sources
+  const extractCompanyName = (assistant) => {
+    // Try multiple sources for company name
+    return assistant.metadata?.companyName || 
+           assistant.vapiData?.metadata?.companyName ||
+           assistant.vapiData?.name?.split(' - ')[0] || // If name format is "Company - Assistant"
+           assistant.name?.split(' - ')[0] ||
+           assistant.vapiData?.firstMessage?.match(/(?:from|at|representing)\s+([A-Z][a-zA-Z\s&]+)/i)?.[1] ||
+           'Unknown Company';
+  };
+
+  // Helper function to check if assistant is ready for calls
+  const checkCallReadiness = (assistant) => {
+    const hasVoice = assistant.voice?.provider && assistant.voice?.voiceId;
+    const hasModel = assistant.model?.provider;
+    const hasPublicKey = VAPI_PUBLIC_KEY && VAPI_PUBLIC_KEY !== 'your-vapi-public-key';
+    
+    return {
+      ready: hasVoice && hasModel && hasPublicKey,
+      issues: [
+        !hasVoice && 'No voice configured',
+        !hasModel && 'No AI model configured', 
+        !hasPublicKey && 'VAPI public key missing'
+      ].filter(Boolean)
+    };
+  };
+
+  // Helper function to format assistant information for display
+  const formatAssistantInfo = (assistant) => {
+    return {
+      voiceProvider: assistant.voice?.provider || 'Not configured',
+      voiceId: assistant.voice?.voiceId || 'Not configured',
+      modelProvider: assistant.model?.provider || 'Not configured',
+      modelName: assistant.model?.model || 'Not configured',
+      language: assistant.language || 'en',
+      languageDisplay: getLanguageDisplay(assistant.language || 'en'),
+      createdDate: assistant.createdAt || 'Unknown',
+      status: assistant.callReady?.ready ? 'Ready' : 'Setup Required'
+    };
+  };
+
+  // Helper function to get readable language display
+  const getLanguageDisplay = (langCode) => {
+    const languages = {
+      'en': 'English',
+      'en-US': 'English (US)',
+      'en-GB': 'English (UK)',
+      'es': 'Spanish',
+      'es-ES': 'Spanish',
+      'fr': 'French',
+      'fr-FR': 'French',
+      'de': 'German',
+      'de-DE': 'German',
+      'it': 'Italian',
+      'it-IT': 'Italian'
+    };
+    return languages[langCode] || langCode;
+  };
+
   const handleRetry = () => {
     setRetryCount(prev => prev + 1);
   };
@@ -65,6 +136,12 @@ const Landing = () => {
   };
 
   const handleCallAssistant = (assistant) => {
+    // Check if call is ready before proceeding
+    if (!assistant.callReady?.ready) {
+      alert(`Cannot start call: ${assistant.callReady?.issues.join(', ')}`);
+      return;
+    }
+
     const params = new URLSearchParams({
       assistantId: assistant.id,
       assistantName: assistant.name,
@@ -82,9 +159,24 @@ const Landing = () => {
   };
 
   const handleViewDetails = (assistant) => {
-    // Show detailed view of the assistant
+    // Create a modal or detailed view
     console.log('Assistant details:', assistant);
-    // You could open a modal or navigate to a details page
+    
+    // For now, show an alert with key information
+    const details = `
+Assistant: ${assistant.name}
+Company: ${assistant.companyName}
+Industry: ${assistant.industry}
+Language: ${assistant.displayInfo.languageDisplay}
+Voice: ${assistant.displayInfo.voiceProvider} - ${assistant.displayInfo.voiceId}
+Model: ${assistant.displayInfo.modelProvider}
+Status: ${assistant.displayInfo.status}
+Created: ${assistant.displayInfo.createdDate}
+Call Ready: ${assistant.callReady?.ready ? 'Yes' : 'No'}
+${assistant.callReady?.issues.length > 0 ? 'Issues: ' + assistant.callReady.issues.join(', ') : ''}
+    `.trim();
+    
+    alert(details);
   };
 
   // SVG Icons
@@ -131,9 +223,27 @@ const Landing = () => {
     </svg>
   );
 
-  const StatusIcon = ({ status, size = 12 }) => (
-    <div className={`status-dot ${status}`} style={{ width: size, height: size }}></div>
+  const AlertTriangleIcon = ({ size = 20 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
   );
+
+  const CheckCircleIcon = ({ size = 20 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <polyline points="22,4 12,14.01 9,11.01"/>
+    </svg>
+  );
+
+  const StatusIcon = ({ status, size = 12 }) => {
+    if (status === 'Ready') {
+      return <div className="status-dot active" style={{ width: size, height: size }}></div>;
+    }
+    return <div className="status-dot warning" style={{ width: size, height: size, backgroundColor: 'var(--accent-warning-orange)' }}></div>;
+  };
 
   const VapiIcon = ({ size = 20 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -227,18 +337,19 @@ const Landing = () => {
           </div>
         </section>
 
-        {/* VAPI Assistants Dashboard */}
+        {/* Enhanced VAPI Assistants Dashboard */}
         <section className="assistants-section">
           <div className="section-header">
             <div className="header-content">
               <h2>
                 <VapiIcon size={24} />
-                Your VAPI Assistants
+                Your Voice Assistants
               </h2>
-              <p>Manage and test your voice assistants from the VAPI dashboard</p>
+              <p>Manage and test your AI-powered voice assistants</p>
               {error && (
                 <div className="error-message">
-                  <span>⚠️ {error}</span>
+                  <AlertTriangleIcon size={16} />
+                  <span>{error}</span>
                   <Button variant="ghost" size="xs" onClick={handleRetry}>
                     Try Again
                   </Button>
@@ -264,48 +375,68 @@ const Landing = () => {
           ) : assistants.length > 0 ? (
             <div className="assistants-grid">
               {assistants.map((assistant) => (
-                <div key={assistant.id} className="assistant-card">
+                <div key={assistant.id} className="assistant-card enhanced">
                   <div className="card-header">
                     <div className="assistant-info">
                       <h3 className="assistant-name">{assistant.name}</h3>
                       <p className="company-name">{assistant.companyName}</p>
                       <div className="vapi-badge">
                         <VapiIcon size={12} />
-                        <span>VAPI</span>
+                        <span>VAPI Assistant</span>
                       </div>
                     </div>
                     <div className="assistant-status">
-                      <StatusIcon status={assistant.status} />
-                      <span className="status-text">{assistant.status}</span>
+                      <StatusIcon status={assistant.displayInfo.status} />
+                      <span className={`status-text ${assistant.callReady?.ready ? 'ready' : 'warning'}`}>
+                        {assistant.displayInfo.status}
+                      </span>
                     </div>
                   </div>
 
+                  {/* Call Readiness Indicator */}
+                  {!assistant.callReady?.ready && (
+                    <div className="call-readiness-warning">
+                      <AlertTriangleIcon size={16} />
+                      <span>Setup required for calls</span>
+                      <div className="issues-list">
+                        {assistant.callReady?.issues.map((issue, index) => (
+                          <span key={index} className="issue-item">• {issue}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="card-content">
-                    <div className="assistant-details">
+                    <div className="assistant-details enhanced">
                       <div className="detail-row">
                         <span className="detail-label">Industry:</span>
                         <span className="detail-value">{assistant.industry}</span>
                       </div>
                       <div className="detail-row">
                         <span className="detail-label">Language:</span>
-                        <span className="detail-value">{assistant.language}</span>
+                        <span className="detail-value">{assistant.displayInfo.languageDisplay}</span>
                       </div>
                       <div className="detail-row">
                         <span className="detail-label">Voice:</span>
-                        <span className="detail-value">{assistant.voice?.provider} - {assistant.voice?.voiceId}</span>
+                        <span className="detail-value">
+                          {assistant.displayInfo.voiceProvider !== 'Not configured' ? 
+                            `${assistant.displayInfo.voiceProvider}` : 
+                            'Not configured'
+                          }
+                        </span>
                       </div>
                       <div className="detail-row">
-                        <span className="detail-label">Model:</span>
-                        <span className="detail-value">{assistant.model?.provider}</span>
+                        <span className="detail-label">AI Model:</span>
+                        <span className="detail-value">{assistant.displayInfo.modelProvider}</span>
                       </div>
                       <div className="detail-row">
                         <span className="detail-label">Created:</span>
-                        <span className="detail-value">{assistant.createdAt}</span>
+                        <span className="detail-value">{assistant.displayInfo.createdDate}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="card-actions">
+                  <div className="card-actions enhanced">
                     <Button 
                       variant="ghost" 
                       size="sm"
@@ -325,13 +456,24 @@ const Landing = () => {
                       Edit
                     </Button>
                     <Button 
-                      variant="success" 
+                      variant={assistant.callReady?.ready ? "success" : "warning"}
                       size="sm"
                       onClick={() => handleCallAssistant(assistant)}
                       className="call-btn"
+                      disabled={!assistant.callReady?.ready}
+                      title={assistant.callReady?.ready ? "Start test call" : `Cannot call: ${assistant.callReady?.issues.join(', ')}`}
                     >
-                      <PhoneIcon size={16} />
-                      Test Call
+                      {assistant.callReady?.ready ? (
+                        <>
+                          <PhoneIcon size={16} />
+                          Test Call
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangleIcon size={16} />
+                          Setup Required
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -342,17 +484,25 @@ const Landing = () => {
               <div className="empty-icon">
                 <VapiIcon size={48} />
               </div>
-              <h3>No Assistants Found</h3>
+              <h3>No Voice Assistants Found</h3>
               <p>
                 {error 
-                  ? 'There was an issue connecting to VAPI. Please check your API key configuration.'
-                  : 'You haven\'t created any voice assistants yet. Start building your first one!'
+                  ? 'There was an issue connecting to VAPI. Please check your API configuration and try again.'
+                  : 'You haven\'t created any voice assistants yet. Start building your first AI-powered assistant today!'
                 }
               </p>
-              <Button variant="primary" onClick={handleGetStarted}>
-                <PlusIcon size={18} />
-                Create Your First Assistant
-              </Button>
+              <div className="empty-actions">
+                <Button variant="primary" onClick={handleGetStarted}>
+                  <PlusIcon size={18} />
+                  Create Your First Assistant
+                </Button>
+                {error && (
+                  <Button variant="secondary" onClick={handleRetry}>
+                    <RefreshIcon size={18} />
+                    Retry Connection
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </section>

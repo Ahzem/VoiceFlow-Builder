@@ -12,7 +12,7 @@ export const fetchVapiAssistants = async () => {
   try {
     console.log('Fetching assistants from VAPI...');
     
-    if (!VAPI_API_KEY || VAPI_API_KEY === 'your-vapi-api-key') {
+    if (!VAPI_API_KEY) {
       console.warn('VAPI API key not configured. Please set VITE_VAPI_API_KEY in your environment variables.');
       return {
         success: false,
@@ -32,29 +32,61 @@ export const fetchVapiAssistants = async () => {
     console.log('VAPI assistants response:', response.data);
 
     // Transform VAPI assistant data to match our UI format
-    const transformedAssistants = response.data.map(assistant => ({
-      id: assistant.id,
-      name: assistant.name || 'Unnamed Assistant',
-      companyName: assistant.metadata?.companyName || 'Unknown Company',
-      personality: assistant.metadata?.personality || 'professional',
-      language: assistant.transcriber?.language || 'en',
-      industry: assistant.metadata?.industry || 'General',
-      status: 'active', // VAPI assistants are active by default
-      createdAt: assistant.createdAt ? new Date(assistant.createdAt).toLocaleDateString() : 'Unknown',
-      updatedAt: assistant.updatedAt ? new Date(assistant.updatedAt).toLocaleDateString() : 'Unknown',
-      firstMessage: assistant.firstMessage || 'Hello! How can I help you today?',
-      voice: {
-        provider: assistant.voice?.provider || 'unknown',
-        voiceId: assistant.voice?.voiceId || 'unknown'
-      },
-      model: {
-        provider: assistant.model?.provider || 'unknown',
-        model: assistant.model?.model || 'unknown'
-      },
-      // Additional metadata from VAPI
-      orgId: assistant.orgId,
-      vapiData: assistant // Store original VAPI data for reference
-    }));
+    const transformedAssistants = response.data.map(assistant => {
+      // Extract company name from multiple possible sources
+      const extractedCompanyName = 
+        assistant.metadata?.companyName ||
+        assistant.name?.split(' - ')[0] || // If name format is "Company - Assistant"
+        assistant.name?.split(' for ')[1] || // If name format is "Assistant for Company"
+        assistant.firstMessage?.match(/(?:from|at|representing|with)\s+([A-Z][a-zA-Z\s&.,-]+?)(?:\.|!|\?|,|$)/i)?.[1]?.trim() ||
+        assistant.name?.match(/^([A-Z][a-zA-Z\s&.,-]+?)\s+(Assistant|AI|Bot|Support)$/i)?.[1] ||
+        'Unknown Company';
+
+      // Extract assistant personality from name or metadata
+      const extractedPersonality = 
+        assistant.metadata?.personality ||
+        (assistant.name?.toLowerCase().includes('professional') ? 'professional' :
+         assistant.name?.toLowerCase().includes('friendly') ? 'friendly' :
+         assistant.name?.toLowerCase().includes('casual') ? 'casual' :
+         assistant.name?.toLowerCase().includes('formal') ? 'formal' : 'professional');
+
+      // Extract industry from metadata or infer from context
+      const extractedIndustry = 
+        assistant.metadata?.industry ||
+        assistant.knowledgeBase?.find(kb => kb.name?.includes('industry'))?.content ||
+        'General';
+
+      return {
+        id: assistant.id,
+        name: assistant.name || 'Unnamed Assistant',
+        companyName: extractedCompanyName,
+        personality: extractedPersonality,
+        language: assistant.transcriber?.language || assistant.voice?.voice || 'en',
+        industry: extractedIndustry,
+        status: 'active', // VAPI assistants are active by default
+        createdAt: assistant.createdAt ? new Date(assistant.createdAt).toLocaleDateString() : 'Unknown',
+        updatedAt: assistant.updatedAt ? new Date(assistant.updatedAt).toLocaleDateString() : 'Unknown',
+        firstMessage: assistant.firstMessage || 'Hello! How can I help you today?',
+        voice: {
+          provider: assistant.voice?.provider || 'unknown',
+          voiceId: assistant.voice?.voiceId || assistant.voice?.voice || 'unknown'
+        },
+        model: {
+          provider: assistant.model?.provider || 'unknown',
+          model: assistant.model?.model || 'unknown'
+        },
+        // Enhanced metadata extraction
+        metadata: {
+          companyName: extractedCompanyName,
+          personality: extractedPersonality,
+          industry: extractedIndustry,
+          ...assistant.metadata
+        },
+        // Additional metadata from VAPI
+        orgId: assistant.orgId,
+        vapiData: assistant // Store original VAPI data for reference
+      };
+    });
 
     return {
       success: true,

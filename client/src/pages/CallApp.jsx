@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Vapi from '@vapi-ai/web';
 import Button from '../components/common/Button.jsx';
-import { VAPI_API_KEY } from '../utils/constants.js';
+import { VAPI_PUBLIC_KEY } from '../utils/constants.js';
 
 const CallApp = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [assistant, setAssistant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -14,15 +15,86 @@ const CallApp = () => {
   const [vapiInstance, setVapiInstance] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(0);
+  const [microphoneStatus, setMicrophoneStatus] = useState('unknown'); // unknown, granted, denied, unavailable
 
   const assistantId = searchParams.get('assistantId');
   const companyName = searchParams.get('companyName') || 'Your Company';
 
+  // Check microphone permissions on component mount
   useEffect(() => {
-    // Debug: Check if API key is loaded
-    console.log('VAPI API Key loaded:', VAPI_API_KEY ? 'Yes' : 'No');
-    console.log('API Key length:', VAPI_API_KEY?.length || 0);
-    console.log('API Key starts with:', VAPI_API_KEY?.substring(0, 8) + '...' || 'undefined');
+    const checkMicrophonePermissions = async () => {
+      try {
+        // Check if getUserMedia is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setMicrophoneStatus('unavailable');
+          setError('Microphone access not supported in this browser');
+          return;
+        }
+
+        // Check current permission status
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            const permission = await navigator.permissions.query({ name: 'microphone' });
+            console.log('Microphone permission status:', permission.state);
+            
+            if (permission.state === 'granted') {
+              setMicrophoneStatus('granted');
+            } else if (permission.state === 'denied') {
+              setMicrophoneStatus('denied');
+              setError('Microphone access denied. Please enable microphone permissions in your browser settings.');
+            } else {
+              setMicrophoneStatus('prompt');
+            }
+          } catch (permErr) {
+            console.log('Permission API not available, will try direct access');
+            setMicrophoneStatus('unknown');
+          }
+        }
+
+        // Try to access microphone to verify it works
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          console.log('Microphone test successful');
+          setMicrophoneStatus('granted');
+          // Stop the test stream
+          stream.getTracks().forEach(track => track.stop());
+        } catch (mediaErr) {
+          console.error('Microphone test failed:', mediaErr);
+          if (mediaErr.name === 'NotAllowedError') {
+            setMicrophoneStatus('denied');
+            setError('Microphone access denied. Please click the microphone icon in your browser address bar and allow microphone access.');
+          } else if (mediaErr.name === 'NotFoundError') {
+            setMicrophoneStatus('unavailable');
+            setError('No microphone found. Please connect a microphone and try again.');
+          } else {
+            setMicrophoneStatus('error');
+            setError(`Microphone error: ${mediaErr.message}`);
+          }
+        }
+      } catch (err) {
+        console.error('Error checking microphone:', err);
+        setMicrophoneStatus('error');
+        setError('Unable to check microphone status');
+      }
+    };
+
+    checkMicrophonePermissions();
+  }, []);
+
+  useEffect(() => {
+    // Enhanced debug: Check if Public API key is loaded
+    console.log('=== VAPI Configuration Debug ===');
+    console.log('VAPI Public Key loaded:', VAPI_PUBLIC_KEY ? 'Yes' : 'No');
+    console.log('Public Key length:', VAPI_PUBLIC_KEY?.length || 0);
+    console.log('Public Key starts with:', VAPI_PUBLIC_KEY?.substring(0, 8) + '...' || 'undefined');
+    console.log('Is using fallback key:', VAPI_PUBLIC_KEY === '2588f020-c27b-4f60-8425-c47f4954174b');
+    
+    // Check environment variables
+    console.log('Environment variables:');
+    console.log('- VITE_VAPI_PUBLIC_KEY set:', !!import.meta.env.VITE_VAPI_PUBLIC_KEY);
+    console.log('- VITE_VAPI_PUBLIC_KEY value length:', import.meta.env.VITE_VAPI_PUBLIC_KEY?.length || 0);
+    console.log('- VITE_VAPI_PRIVATE_KEY set:', !!import.meta.env.VITE_VAPI_PRIVATE_KEY);
+    console.log('- All env vars:', Object.keys(import.meta.env).filter(key => key.includes('VAPI')));
 
     if (assistantId) {
       setAssistant({
@@ -36,19 +108,62 @@ const CallApp = () => {
 
       // Initialize VAPI instance
       try {
-        if (!VAPI_API_KEY || VAPI_API_KEY === 'your-vapi-api-key') {
-          throw new Error('VAPI API key not configured. Please check your .env file.');
+        if (!VAPI_PUBLIC_KEY || VAPI_PUBLIC_KEY === 'your-vapi-public-key') {
+          throw new Error('VAPI Public Key not configured. Please check your .env file and ensure VITE_VAPI_PUBLIC_KEY is set.');
         }
 
-        console.log('Initializing VAPI with key...');
-        const vapi = new Vapi(VAPI_API_KEY);
+        console.log('Initializing VAPI with public key...');
+        const vapi = new Vapi(VAPI_PUBLIC_KEY);
         setVapiInstance(vapi);
 
         // Set up event listeners
+        vapi.on('message', (message) => {
+          console.log('VAPI Message:', message);
+          
+          if (message.type === 'transcript') {
+            console.log(`${message.role}: ${message.transcript}`);
+          } else if (message.type === 'speech-update') {
+            if (message.status === 'started') {
+              console.log('Assistant started speaking');
+            } else if (message.status === 'stopped') {
+              console.log('Assistant stopped speaking');
+            }
+          }
+        });
+
+        vapi.on('error', (error) => {
+          console.error('VAPI Error:', error);
+          console.error('Error details:', {
+            message: error?.message,
+            status: error?.status,
+            response: error?.response,
+            type: error?.type
+          });
+          
+          // Enhanced error handling for different types of errors
+          let errorMessage = 'Unknown error occurred';
+          if (error?.status === 400) {
+            errorMessage = 'Bad Request: The assistant ID may be invalid or the assistant is not properly configured';
+          } else if (error?.status === 401) {
+            errorMessage = 'Authentication failed: Invalid API key';
+          } else if (error?.status === 403) {
+            errorMessage = 'Access forbidden: Check your API key permissions';
+          } else if (error?.status === 404) {
+            errorMessage = 'Assistant not found: The assistant ID may be incorrect';
+          } else if (error?.type === 'cors') {
+            errorMessage = 'Network error: CORS or connection issue';
+          } else if (error?.message) {
+            errorMessage = error.message;
+          }
+          
+          setError(`Voice call error: ${errorMessage}`);
+          setCallState('idle');
+        });
+
         vapi.on('call-start', () => {
           console.log('Call started');
           setCallState('active');
-          setCallDuration(0);
+          setError('');
         });
 
         vapi.on('call-end', () => {
@@ -57,45 +172,15 @@ const CallApp = () => {
           setCallDuration(0);
         });
 
-        vapi.on('speech-start', () => {
-          console.log('Assistant started speaking');
-        });
-
-        vapi.on('speech-end', () => {
-          console.log('Assistant stopped speaking');
-        });
-
-        vapi.on('volume-level', (volume) => {
-          setVolumeLevel(volume);
-        });
-
-        vapi.on('error', (error) => {
-          console.error('VAPI Error:', error);
-          let errorMessage = 'Call failed';
-          
-          if (error?.message) {
-            errorMessage = error.message;
-          } else if (error?.status === 401) {
-            errorMessage = 'Authentication failed. Please check your VAPI API key.';
-          } else if (error?.status === 403) {
-            errorMessage = 'Access denied. Please verify your VAPI account permissions.';
-          } else if (error?.status === 404) {
-            errorMessage = 'Assistant not found. Please check the assistant ID.';
-          }
-          
-          setError(errorMessage);
-          setCallState('idle');
-        });
-
-        vapi.on('message', (message) => {
-          console.log('VAPI Message:', message);
+        vapi.on('volume-level', (level) => {
+          setVolumeLevel(level);
         });
 
         console.log('VAPI initialized successfully');
-
-      } catch (error) {
-        console.error('Failed to initialize VAPI:', error);
-        setError('Failed to initialize voice system: ' + error.message);
+      } catch (err) {
+        console.error('Failed to initialize VAPI:', err);
+        setError(`Failed to initialize voice service: ${err.message}`);
+        setLoading(false);
       }
     } else {
       setError('No assistant ID provided');
@@ -120,8 +205,19 @@ const CallApp = () => {
   };
 
   const handleStartCall = async () => {
-    if (!vapiInstance || !assistantId) {
-      setError('Voice system not ready');
+    if (!vapiInstance) {
+      setError('Voice service not initialized');
+      return;
+    }
+
+    // Check microphone before starting call
+    if (microphoneStatus === 'denied') {
+      setError('Microphone access is required for voice calls. Please enable microphone permissions and refresh the page.');
+      return;
+    }
+
+    if (microphoneStatus === 'unavailable') {
+      setError('No microphone detected. Please connect a microphone and try again.');
       return;
     }
 
@@ -130,27 +226,36 @@ const CallApp = () => {
       setError('');
       
       console.log('Starting call with assistant ID:', assistantId);
-      console.log('Using VAPI key:', VAPI_API_KEY?.substring(0, 8) + '...');
+      console.log('Using VAPI public key:', VAPI_PUBLIC_KEY?.substring(0, 8) + '...');
       
-      // Start the call with the assistant ID
-      const call = await vapiInstance.start(assistantId);
-      console.log('Call started successfully:', call);
+      // Additional debugging for assistant configuration
+      console.log('Assistant configuration:', {
+        id: assistantId,
+        name: assistant?.name,
+        companyName: companyName,
+        personality: assistant?.personality,
+        language: assistant?.language
+      });
       
-    } catch (error) {
-      console.error('Error starting call:', error);
-      
-      let errorMessage = 'Failed to start call';
-      if (error?.message?.includes('401') || error?.status === 401) {
-        errorMessage = 'Authentication failed. Your VAPI API key may be invalid or expired.';
-      } else if (error?.message?.includes('403') || error?.status === 403) {
-        errorMessage = 'Access denied. Please check your VAPI account permissions.';
-      } else if (error?.message?.includes('404') || error?.status === 404) {
-        errorMessage = 'Assistant not found. Please verify the assistant ID exists in your VAPI dashboard.';
-      } else if (error?.message) {
-        errorMessage = error.message;
+      // Test microphone one more time before call
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('Microphone access confirmed');
+        stream.getTracks().forEach(track => track.stop());
+      } catch (micErr) {
+        console.error('Microphone access failed before call:', micErr);
+        setError('Microphone access failed. Please check your browser permissions.');
+        setCallState('idle');
+        return;
       }
       
-      setError(errorMessage);
+      console.log('Attempting to start VAPI call...');
+      const call = await vapiInstance.start(assistantId);
+      
+      console.log('Call started successfully:', call);
+    } catch (err) {
+      console.error('Failed to start call:', err);
+      setError(`Failed to start call: ${err.message || 'Unknown error'}`);
       setCallState('idle');
     }
   };
@@ -174,7 +279,7 @@ const CallApp = () => {
     if (callState === 'active') {
       handleEndCall();
     }
-    window.location.href = '/';
+    navigate('/');
   };
 
   const getCallStatusText = () => {
@@ -249,6 +354,52 @@ const CallApp = () => {
     </svg>
   );
 
+  // Render microphone permission warning if needed
+  const renderMicrophoneWarning = () => {
+    if (microphoneStatus === 'denied') {
+      return (
+        <div className="microphone-warning error">
+          <div className="warning-icon">🎤</div>
+          <div className="warning-content">
+            <h4>Microphone Access Required</h4>
+            <p>To make voice calls, please:</p>
+            <ol>
+              <li>Click the microphone icon in your browser's address bar</li>
+              <li>Select "Allow" for microphone access</li>
+              <li>Refresh this page</li>
+            </ol>
+          </div>
+        </div>
+      );
+    }
+
+    if (microphoneStatus === 'unavailable') {
+      return (
+        <div className="microphone-warning error">
+          <div className="warning-icon">🎤</div>
+          <div className="warning-content">
+            <h4>No Microphone Detected</h4>
+            <p>Please connect a microphone to your device and refresh the page.</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (microphoneStatus === 'error') {
+      return (
+        <div className="microphone-warning warning">
+          <div className="warning-icon">⚠️</div>
+          <div className="warning-content">
+            <h4>Microphone Setup Issue</h4>
+            <p>There may be an issue with your microphone setup. Please check your device settings.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   if (loading) {
     return (
       <div className="call-app">
@@ -272,20 +423,63 @@ const CallApp = () => {
             <div className="error-state">
               <h2>Connection Error</h2>
               <p>{error}</p>
-              {error.includes('API key') && (
-                <div style={{ marginTop: 'var(--spacing-md)', padding: 'var(--spacing-md)', background: 'rgba(49, 130, 206, 0.1)', borderRadius: 'var(--radius-md)' }}>
-                  <h4>Troubleshooting Steps:</h4>
-                  <ul style={{ textAlign: 'left', marginTop: 'var(--spacing-sm)' }}>
-                    <li>Verify your VAPI API key in the .env file</li>
-                    <li>Make sure you're using your <strong>Public Key</strong>, not Private Key</li>
-                    <li>Check that your VAPI account is active</li>
-                    <li>Restart the development server after changing .env</li>
-                  </ul>
+              
+              {/* Enhanced troubleshooting for authentication errors */}
+              {(error.includes('Authentication') || error.includes('401') || error.includes('API key')) && (
+                <div style={{ 
+                  marginTop: 'var(--spacing-lg)', 
+                  padding: 'var(--spacing-lg)', 
+                  background: 'rgba(49, 130, 206, 0.1)', 
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid rgba(49, 130, 206, 0.2)'
+                }}>
+                  <h4 style={{ color: 'var(--primary-vibrant-blue)', marginBottom: 'var(--spacing-md)' }}>
+                    🔧 Authentication Fix
+                  </h4>
+                  
+                  <div style={{ marginBottom: 'var(--spacing-md)' }}>
+                    <strong>Current Status:</strong>
+                    <ul style={{ textAlign: 'left', marginTop: 'var(--spacing-sm)', fontSize: 'var(--font-size-sm)' }}>
+                      <li>Public Key Loaded: {VAPI_PUBLIC_KEY ? '✅ Yes' : '❌ No'}</li>
+                      <li>Using Fallback Key: {VAPI_PUBLIC_KEY === '2588f020-c27b-4f60-8425-c47f4954174b' ? '⚠️ Yes' : '✅ No'}</li>
+                      <li>Environment Configured: {import.meta.env.VITE_VAPI_PUBLIC_KEY ? '✅ Yes' : '❌ No'}</li>
+                    </ul>
+                  </div>
+                  
+                  <h4 style={{ color: 'var(--primary-vibrant-blue)', marginBottom: 'var(--spacing-sm)' }}>
+                    Quick Fix Steps:
+                  </h4>
+                  <ol style={{ textAlign: 'left', marginTop: 'var(--spacing-sm)', fontSize: 'var(--font-size-sm)' }}>
+                    <li>Create a <code>.env</code> file in the <code>client</code> directory</li>
+                    <li>Add your VAPI Public Key: <code>VITE_VAPI_PUBLIC_KEY=your_public_key_here</code></li>
+                    <li>Get your key from <a href="https://vapi.ai/dashboard" target="_blank" rel="noopener noreferrer">VAPI Dashboard</a></li>
+                    <li>Restart the development server: <code>npm run dev</code></li>
+                    <li>Refresh this page</li>
+                  </ol>
+                  
+                  <div style={{ 
+                    marginTop: 'var(--spacing-md)', 
+                    padding: 'var(--spacing-sm)', 
+                    background: 'rgba(237, 137, 54, 0.1)', 
+                    borderRadius: 'var(--radius-sm)', 
+                    fontSize: 'var(--font-size-sm)'
+                  }}>
+                    <strong>⚠️ Important:</strong> Use your <strong>Public Key</strong> for calls, not the Private Key!
+                  </div>
                 </div>
               )}
-              <Button onClick={handleBackToHome} variant="primary" style={{ marginTop: 'var(--spacing-lg)' }}>
-                Back to Home
-              </Button>
+              
+              <div style={{ marginTop: 'var(--spacing-lg)', display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'center' }}>
+                <Button onClick={handleBackToHome} variant="primary">
+                  Back to Home
+                </Button>
+                <Button 
+                  onClick={() => window.open('https://vapi.ai/dashboard', '_blank')} 
+                  variant="secondary"
+                >
+                  Open VAPI Dashboard
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -320,6 +514,9 @@ const CallApp = () => {
 
           {/* Call Interface */}
           <div className="call-interface">
+            {/* Microphone Warning */}
+            {renderMicrophoneWarning()}
+
             <div className="call-status">
               <div className={`status-indicator ${getCallStatusClass()}`}>
                 {(callState === 'connecting' || callState === 'ending') && (
@@ -429,6 +626,54 @@ const CallApp = () => {
                 <li><CheckIcon />Use the mute button if you need privacy during the call</li>
                 <li><CheckIcon />Click "End Call" when you're finished</li>
               </ul>
+            </div>
+
+            {/* Configuration Status - for debugging */}
+            <div className="config-status">
+              <h4>Configuration Status</h4>
+              <div className="status-grid">
+                <div className="status-item">
+                  <div className="status-label">Assistant ID:</div>
+                  <div className="status-value">{assistantId}</div>
+                </div>
+                <div className="status-item">
+                  <div className="status-label">VAPI Public Key:</div>
+                  <div className="status-value">
+                    {VAPI_PUBLIC_KEY === '2588f020-c27b-4f60-8425-c47f4954174b' ? 
+                      '⚠️ Using fallback key' : 
+                      `✅ ${VAPI_PUBLIC_KEY?.substring(0, 8)}...`
+                    }
+                  </div>
+                </div>
+                <div className="status-item">
+                  <div className="status-label">Environment Key Set:</div>
+                  <div className="status-value">
+                    {import.meta.env.VITE_VAPI_PUBLIC_KEY ? 
+                      `✅ ${import.meta.env.VITE_VAPI_PUBLIC_KEY.substring(0, 8)}...` : 
+                      '❌ Not set'
+                    }
+                  </div>
+                </div>
+                <div className="status-item">
+                  <div className="status-label">Microphone:</div>
+                  <div className="status-value">
+                    {microphoneStatus === 'granted' && '✅ Ready'}
+                    {microphoneStatus === 'denied' && '❌ Access denied'}
+                    {microphoneStatus === 'unavailable' && '❌ Not found'}
+                    {microphoneStatus === 'unknown' && '⚠️ Checking...'}
+                    {microphoneStatus === 'error' && '❌ Error'}
+                  </div>
+                </div>
+                <div className="status-item">
+                  <div className="status-label">Call Ready:</div>
+                  <div className="status-value">
+                    {vapiInstance && microphoneStatus === 'granted' ? 
+                      '✅ Ready' : 
+                      '❌ Not ready'
+                    }
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
