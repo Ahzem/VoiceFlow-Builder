@@ -2,7 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import Landing from './pages/Landing.jsx'
 import FormWizard from './pages/FormWizard.jsx'
-import CallApp from './pages/CallApp.jsx'
+import CallChatApp from './pages/CallChatApp.jsx'
 import OAuthCallback from './pages/OAuthCallback.jsx'
 import './styles/globals.css'
 import './styles/pages.css'
@@ -25,10 +25,16 @@ function App() {
             element={<FormWizard />} 
           />
           
-          {/* Call App */}
+          {/* Unified Call/Chat App */}
           <Route 
             path="/call" 
-            element={<CallApp />} 
+            element={<CallChatApp />} 
+          />
+          
+          {/* Chat route also points to unified app */}
+          <Route 
+            path="/chat" 
+            element={<CallChatApp />} 
           />
           
           {/* OAuth Callback */}
